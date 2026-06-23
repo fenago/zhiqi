@@ -23,6 +23,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="CMR course-selection pipeline (POC)")
     ap.add_argument("cmr", help="Path to the CMR .xlsb workbook")
     ap.add_argument("--out", default="output", help="Output directory")
+    ap.add_argument("--no-analyze", action="store_true",
+                    help="Skip the live Claude analysis call (still writes prompt+summary)")
     args = ap.parse_args(argv)
 
     os.makedirs(args.out, exist_ok=True)
@@ -65,9 +67,16 @@ def main(argv=None):
                   sheet_name="Integrity")
     print(f"[out] {int_path}  ({len(integrity_rows)} rows)")
 
-    # --- analysis layer ---
+    # --- analysis layer (deterministic + live Claude) ---
     summary = analysis.build_summary(freport, dreport, ireport)
-    for name, text in analysis.run(summary).items():
+    print(f"[analysis] duration tolerance: {dreport['tolerance']}  |  "
+          f"within-tolerance flagged: {dreport.get('within_tolerance_count', 0)}")
+    artifacts = analysis.run(summary, want_llm=not args.no_analyze)
+    if "analysis_llm.md" in artifacts:
+        print("[analysis] live Claude analysis: OK -> analysis_llm.md")
+    elif "analysis_llm_SKIPPED.txt" in artifacts:
+        print("[analysis] live Claude analysis: skipped (see analysis_llm_SKIPPED.txt)")
+    for name, text in artifacts.items():
         p = os.path.join(args.out, name)
         with open(p, "w") as fh:
             fh.write(text)

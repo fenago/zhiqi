@@ -271,14 +271,19 @@ single-component (combined `C`-suffix sections), so any `LAB`/`PRA` row in Acad 
 `Ignored - Acad Org has no lab component`) and not integrity-checked. In the current
 file this affects exactly **1 row** (CTS1120 LAB). Config: `NO_LAB_ORGS = {"450060"}`.
 
-### 5.5 Tolerance
+### 5.5 Tolerance (DECIDED: 10% of expected)
 
-- Classes off by **less than 10% of total duration (minutes)** → considered validated,
-  but **can be flagged and noted**.
-- Linked-section result handling text also references **"less than 10 minutes
-  difference"** as the allowed tolerance.
-- ⚠️ **Ambiguity (Q8):** is the canonical tolerance **10%**, **10 minutes**, or 10% for
-  general pass-with-flag and 10 min for "clean pass"? **Needs confirmation.**
+- **Canonical tolerance = 10% of the expected duration** (the doc's explicit "off by
+  less than 10% … should be considered validated"). Configurable in `config.py`
+  (`TOLERANCE_MODE`/`TOLERANCE_PCT`); a `minutes` mode (10 min) is available as an
+  alternative the doc also cites.
+- **Behavior:**
+  - off by 0 → `Validated`, no note.
+  - off by >0 but ≤ tolerance → `Validated`, **flagged + noted** (`Within tolerance: …`).
+  - off by > tolerance → `Mismatch`, with `Add/Subtract N min`.
+- **First-run effect:** 0 mismatches; **36** rows pass but are flagged within-tolerance
+  (all tiny ≤7 min deviations, e.g. a blended class scheduled 195 vs 200 min). At a 10
+  min absolute tolerance the result is identical (0 mismatches) for this file.
 
 ### 5.6 Output (append columns; preserve original row order)
 
@@ -416,6 +421,22 @@ Error 2 · Warning 0 · OK 182.
   per the 450060 rule. A B4 false positive on CGS1060C was caught during the run and the
   rule tightened — see B4.) Implemented in `cmr_pipeline/integrity.py`.
 
+### 5.10 LLM analysis layer (live Claude wiring)
+
+Deterministic results are fed to Claude for a human-readable narrative ("best of both
+worlds" — rules stay in Python, the LLM only interprets). `cmr_pipeline/analysis.py`:
+
+- Always writes `analysis_prompt.txt` (exact prompt), `analysis_summary.md`
+  (deterministic narrative), and `summary.json`.
+- **Live call:** builds an Anthropic client from `ANTHROPIC_API_KEY` (or
+  `ANTHROPIC_AUTH_TOKEN`), honors `ANTHROPIC_BASE_URL`, and trusts the agent-proxy CA
+  (`/root/.ccr/ca-bundle.crt`). On success writes `analysis_llm.md`; otherwise writes
+  `analysis_llm_SKIPPED.txt` with the reason. Model via `ANTHROPIC_MODEL`
+  (default `claude-opus-4-8`). Disable with `--no-analyze`.
+- **Verified:** the call path reaches the live API through the proxy (a dummy key
+  returns a real `401 invalid x-api-key` with a request_id). Set a valid
+  `ANTHROPIC_API_KEY` to produce `analysis_llm.md`.
+
 ### 5.7 Implementation approach (recommended)
 
 - Build as a **deterministic rules engine** (Python), with this spec as the written
@@ -456,7 +477,7 @@ Error 2 · Warning 0 · OK 182.
 | Q5 | Step 1 filter authority: `Acad Org` only (278) vs `Acad Org` + Kendall location (277)? | Resolved → filter by `Acad Org` (ownership); location tracked separately. |
 | Q6 | Reconcile step numbering (Filter vs Duration as "Step 1"). | Open |
 | Q7 | Should excluded rows (non-active 42, `9999`-cap 52) be dropped entirely or set aside in the master CMR? | Open (default: set aside, don't delete) |
-| Q8 | Duration tolerance: 10% of total minutes, 10 minutes, or both (10% pass-with-flag vs 10-min clean pass)? | Open — needs confirmation |
+| Q8 | Duration tolerance | **DECIDED: 10% of expected** (within-tolerance passes but is flagged/noted); configurable. |
 | Q9 | Confirm 450060 remap (80→64, 64→48) applies only to Acad Org 450060 and to all its sections. | Open (working: yes, clock→contact hr conversion) |
 | Q10 | "Main_" file = the Step 1 filtered 184-row output? | Open (adjacency basis = Main_ file: **confirmed**) |
 | Q11 | Dynamic sessions (`DYN`/`DYS`): compute weeks from `Start/End Date` when Session Code not in week map? | Open |
@@ -474,6 +495,8 @@ Error 2 · Warning 0 · OK 182.
 | 2026-06-23 | Step 1 scoped by **`Acad Org` (department ownership)**; physical location handled later (Q5 resolved). |
 | 2026-06-23 | **Core objective recorded:** Steps 1–1b are a data-quality/cleaning effort — validate & fix the CMR *before* it goes to faculty for selection. Step 1b (Duration Validation) is a **remediation gate**, not just a report. |
 | 2026-06-23 | Duration Validation spec captured from `Instructions_for_Duration_Validation_Fall_Spring.docx`; formula confirmed against real CMR data. |
+| 2026-06-23 | **Duration tolerance decided = 10% of expected** (within-tolerance → Validated + flagged note; configurable to 10-min mode). 36 rows flagged within-tolerance in this file, 0 mismatches. |
+| 2026-06-23 | **Live Claude analysis wired** (`analysis.py`): API key/auth-token + base URL + proxy-CA; writes `analysis_llm.md` when a key is present, else a skip note. Call path verified against the live API (dummy key → real 401). |
 | 2026-06-23 | **Integrity-check catalog A1–D1 finalized (best judgment):** two-tier Error/Warning; A1 (cap mismatch) & B1/B2 (mislabel, time-misalign) = Error; A2, B3, B4, C1, C2, D1 = Warning. Candidate-pair = adjacent + same Class Descr + same Concat Days. "Rollover" (C1) defined as `Mtg End ≤ Mtg Start`. Output adds `Integrity Status` + `Integrity Flags` columns. See §5.9. Open to override. |
 | 2026-06-23 | **Linked LEC/LAB definition finalized:** LEC immediately precedes lab (LEC first); 1:1 cardinality; exact `Class Descr` match; lab `Mtg Start` == lec `Mtg End` with **zero tolerance** (to the minute). Adjacency = within the `Main_` file. Code updated (removed prior 1-min tolerance). Equal `Cap Enrl` is a **separate** integrity check, not part of linking. |
 | 2026-06-23 | Process to be captured in this living document **before** building the application. |

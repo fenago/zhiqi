@@ -59,12 +59,20 @@ LINKED_ORGS = {"300020", "450034"}
 REMAP_ORG = "450060"
 CCH_REMAP = {80.0: 64.0, 64.0: 48.0}
 
-# ---- Tolerance (Q8 - confirm with stakeholder) ------------------------------
-# "pct"     : pass if |actual - expected| <= TOLERANCE_PCT * expected
-# "minutes" : pass if |actual - expected| <= TOLERANCE_MINUTES
+# ---- Tolerance (Q8 - DECIDED: 10% of total duration) ------------------------
+# A class within tolerance is "Validated"; if it is within tolerance but not exact
+# it still passes but is flagged + noted ("Within tolerance: ...").
+# "pct"     : pass if |actual - expected| <= TOLERANCE_PCT * expected   (default)
+# "minutes" : pass if |actual - expected| <= TOLERANCE_MINUTES (alt; doc also cites 10 min)
 TOLERANCE_MODE = "pct"
 TOLERANCE_PCT = 0.10         # 10% of total duration
 TOLERANCE_MINUTES = 10       # alternative absolute tolerance
+
+
+def tolerance_label() -> str:
+    if TOLERANCE_MODE == "minutes":
+        return f"{TOLERANCE_MINUTES} min"
+    return f"{TOLERANCE_PCT:.0%} of expected"
 
 # ---- Validation status labels ----------------------------------------------
 STATUS_VALIDATED = "Validated"

@@ -233,12 +233,16 @@ def _build_report(rows):
     for r in rows:
         counts[r.get(C_STATUS)] = counts.get(r.get(C_STATUS), 0) + 1
     mismatches = [r for r in rows if r.get(C_STATUS) == config.STATUS_MISMATCH]
+    # Validated rows that are not exact but pass within tolerance (flagged + noted).
+    within = [r for r in rows
+              if r.get(C_STATUS) == config.STATUS_VALIDATED
+              and str(r.get(C_NOTES, "")).startswith("Within tolerance")]
     return {
         "total": len(rows),
         "status_counts": counts,
         "mismatch_count": len(mismatches),
         "mismatches": mismatches,
-        "tolerance": (config.TOLERANCE_MODE,
-                      config.TOLERANCE_PCT if config.TOLERANCE_MODE == "pct"
-                      else config.TOLERANCE_MINUTES),
+        "within_tolerance_count": len(within),
+        "within_tolerance": within,
+        "tolerance": config.tolerance_label(),
     }
