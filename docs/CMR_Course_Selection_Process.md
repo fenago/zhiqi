@@ -312,38 +312,92 @@ Duration validation (10% tolerance) results:
 - **Tolerance choice now has visible stakes (Q8):** mismatches by rule —
   exact: 36 (all ≤7 min) · 5 min: 1 · 10 min: 0 · 10%: 0 · 5%: 0.
 
-### 5.9 Integrity-check catalog (Step 1b extension) — DRAFT, being ratified
+### 5.9 Integrity-check catalog (Step 1b extension) — FINALIZED (best-judgment)
+
+> **Status: all rules below are decided (best judgment, 2026-06-23) and ready to
+> build.** They are open to override — flag any that are wrong.
 
 The duration formula (S5.2) is one check. These are **additional, independent**
 checks layered on top — they catch errors the formula cannot see (a row can pass
-duration yet still be bad, e.g. ARC2580). Each check emits a flag + note; a row may
-carry several. Status tracks our rule-by-rule ratification.
+duration yet still be bad, e.g. ARC2580). Each check emits a flag; a row may carry
+several. All checks run on the **184-row `Main_` file**, in original order.
 
-**Core duration formula (foundation, implemented):**
-`Expected = Crs Cntct Hrs × 50 min ÷ weeks ÷ days` (× 0.5 for BL; 450060 cch remap first).
+**Severity model (two tiers):**
+- **Error** = a definite data error that **must be fixed before** the schedule goes to
+  faculty selection. Used for the structural errors that corrupt the combined-class
+  logic.
+- **Warning** = flag for **human review**, non-blocking.
 
-| ID | Check | Precise rule | Severity | Status |
-|---|---|---|---|---|
-| A1 | Linked-pair Cap Enrl mismatch | linked LEC.`Cap Enrl` must equal LAB/PRA.`Cap Enrl` → flag both | Error | proposed (exact-equal: confirm) |
-| A2 | Linked-pair field consistency (safety net) | within a linked pair, flag if `Instr Mode`, `Session Code`, or `Crs Cntct Hrs` differ | **Warning** | **CONFIRMED — keep as safety net** |
-| B1 | Comp mislabel (`LEC/LEC`) | candidate pair (adjacent + same `Class Descr` + same `Concat Days`) where 2nd row is `LEC` and its `Mtg Start` == 1st `Mtg End` → flag mislabel | Error | proposed |
-| B2 | Time misalignment | candidate pair that is LEC→LAB/PRA but `Mtg Start` ≠ `Mtg End` (only failing link cond.) → flag, report gap mins | Error | proposed |
-| B3 | Orphan component | LAB/PRA with no linked LEC before it; or LEC with a same-descr lab that isn't adjacent | Warning | proposed (in/out?) |
-| B4 | Duplicate component | same `Class Descr`+days with two LECs or two LABs | Warning | proposed (in/out?) |
-| C1 | Rollover / invalid times | `Mtg End` ≤ `Mtg Start` or AM/PM rollover producing wrong duration | **Warning (needs human eyes)** | **CONFIRMED severity** — exact definition of "rollover" still pending |
-| C2 | Internal duration inconsistency | `Duration` column ≠ (`Mtg End` − `Mtg Start`) | Error | proposed (in/out?) |
-| D1 | Missing required fields | zero/blank `Cap Enrl`, missing `Mtg Start/End` or `Concat Days` on active in-person/live section | Warning | proposed (which fields mandatory?) |
+**Candidate-pair definition (basis for B1/B2):** two **adjacent** rows (N, N+1) with the
+**same `Class Descr`** (exact) **and** the **same `Concat Days`** — i.e. 2 of the 4 link
+conditions already hold, so the pair was *meant* to be one combined class.
 
-**Candidate-pair definition (basis for B1/B2):** two **adjacent** rows with the **same
-`Class Descr`** and **same `Concat Days`** (2 of the 4 link conditions already hold).
-— *pending confirmation.*
+| ID | Check | Severity | Flag code |
+|---|---|---|---|
+| A1 | Linked-pair Cap Enrl mismatch | **Error** | `CAP_MISMATCH` |
+| A2 | Linked-pair field consistency (Instr Mode / Session Code / Crs Cntct Hrs) | **Warning** | `PAIR_FIELD_MISMATCH` |
+| B1 | Comp mislabel (`LEC/LEC` that should be `LEC/LAB`) | **Error** | `COMP_MISLABEL` |
+| B2 | Linked-pair time misalignment | **Error** | `TIME_MISALIGN` |
+| B3 | Orphan component | **Warning** | `ORPHAN_LAB` |
+| B4 | Duplicate component | **Warning** | `DUPLICATE_COMPONENT` |
+| C1 | Rollover / invalid meeting times | **Warning** | `TIME_ROLLOVER` |
+| C2 | Internal duration inconsistency | **Warning** | `DURATION_INCONSISTENT` |
+| D1 | Missing required fields | **Warning** | `MISSING_FIELDS` |
 
-**Severity model (CONFIRMED):** two tiers — **Error** (must fix before the schedule
-goes to faculty) and **Warning** (flag for human review, non-blocking).
+**Precise rule for each (deterministic):**
 
-**Open decisions:** (1) which checks are in scope; (2) A2 confirmed; (3) candidate-pair
-basis; (4) C1 severity confirmed = Warning, but precise meaning of "rollover" still
-pending; (5) severity model confirmed (two-tier).
+- **A1 — `CAP_MISMATCH` (Error).** For a linked LEC↔LAB/PRA pair, `LEC.Cap Enrl` must
+  **exactly equal** `LAB/PRA.Cap Enrl`. If not, flag **both** rows. *(ARC2580: 40 ≠ 30.)*
+
+- **A2 — `PAIR_FIELD_MISMATCH` (Warning).** Within a linked pair, flag **both** rows if
+  any of `Instr Mode`, `Session Code`, or `Crs Cntct Hrs` differ between LEC and LAB.
+  (Days already match by the link rule.) Safety net; does not occur in the current file.
+
+- **B1 — `COMP_MISLABEL` (Error).** For a candidate pair where the 2nd row's `Comp` is
+  `LEC` (not LAB/PRA) **and** the 2nd row's `Mtg Start` == the 1st row's `Mtg End`
+  (contiguous, to the minute) → the lab was mislabeled as a lecture. Flag **both** rows.
+  (Contiguous time + same descr + same days is strong evidence it was meant to be a
+  LEC/LAB block. Two same-descr lectures that are **not** contiguous are left alone —
+  legitimately separate sections.)
+
+- **B2 — `TIME_MISALIGN` (Error).** For a candidate pair that **is** LEC→LAB/PRA (correct
+  components) but the LAB/PRA `Mtg Start` ≠ the LEC `Mtg End` → the only failing link
+  condition. Flag **both** rows; in Notes report the gap/overlap in minutes
+  (positive = gap, negative = overlap). *(The 6:55 → 7:05 case.)*
+
+- **B3 — `ORPHAN_LAB` (Warning).** In a linked org (300020/450034), a `LAB/PRA` row that
+  is **not** part of any valid linked pair (the immediately preceding row is not a LEC
+  that links to it). Flag the orphan lab. *(LEC-without-lab detection is out of scope —
+  it would require catalog data on which courses require a lab.)*
+
+- **B4 — `DUPLICATE_COMPONENT` (Warning).** Two rows with **identical** `Class Descr`,
+  `Comp`, `Concat Days`, `Session Code`, `Mtg Start`, and `Mtg End` → an apparent exact
+  duplicate. Flag both. (Strict identity to avoid false positives on legitimate multiple
+  sections of the same course.)
+
+- **C1 — `TIME_ROLLOVER` (Warning).** Any row with both `Mtg Start` and `Mtg End` present
+  where `Mtg End` ≤ `Mtg Start`. This captures AM/PM and hour rollovers (an end that
+  computes at/before the start). Needs human eyes.
+
+- **C2 — `DURATION_INCONSISTENT` (Warning).** The `Duration` column (in minutes) must
+  equal (`Mtg End` − `Mtg Start`) in minutes, compared to the minute. If they disagree,
+  the source row is self-contradictory → flag. (Skipped for EX/IN, which have no meeting
+  pattern.)
+
+- **D1 — `MISSING_FIELDS` (Warning).** For an **active** section that requires a meeting
+  pattern (Instr Mode not EX/IN): flag if any of `Mtg Start`, `Mtg End`, or
+  `Concat Days` is blank, or if `Cap Enrl` is blank. (The `9999` sentinel is already
+  removed in Step 1.)
+
+**Output (two new appended columns, in addition to the duration columns in S5.6):**
+
+| Column | Meaning |
+|---|---|
+| Integrity Status | `Error` / `Warning` / `OK` (highest severity among this row's flags) |
+| Integrity Flags | semicolon-separated `CODE: detail` list (empty if OK) |
+
+The duration validation columns (S5.6) are independent — a row can be duration-
+`Validated` while carrying an `Integrity Status = Error` (ARC2580 is exactly this).
 
 ### 5.7 Implementation approach (recommended)
 
@@ -403,5 +457,6 @@ pending; (5) severity model confirmed (two-tier).
 | 2026-06-23 | Step 1 scoped by **`Acad Org` (department ownership)**; physical location handled later (Q5 resolved). |
 | 2026-06-23 | **Core objective recorded:** Steps 1–1b are a data-quality/cleaning effort — validate & fix the CMR *before* it goes to faculty for selection. Step 1b (Duration Validation) is a **remediation gate**, not just a report. |
 | 2026-06-23 | Duration Validation spec captured from `Instructions_for_Duration_Validation_Fall_Spring.docx`; formula confirmed against real CMR data. |
+| 2026-06-23 | **Integrity-check catalog A1–D1 finalized (best judgment):** two-tier Error/Warning; A1 (cap mismatch) & B1/B2 (mislabel, time-misalign) = Error; A2, B3, B4, C1, C2, D1 = Warning. Candidate-pair = adjacent + same Class Descr + same Concat Days. "Rollover" (C1) defined as `Mtg End ≤ Mtg Start`. Output adds `Integrity Status` + `Integrity Flags` columns. See §5.9. Open to override. |
 | 2026-06-23 | **Linked LEC/LAB definition finalized:** LEC immediately precedes lab (LEC first); 1:1 cardinality; exact `Class Descr` match; lab `Mtg Start` == lec `Mtg End` with **zero tolerance** (to the minute). Adjacency = within the `Main_` file. Code updated (removed prior 1-min tolerance). Equal `Cap Enrl` is a **separate** integrity check, not part of linking. |
 | 2026-06-23 | Process to be captured in this living document **before** building the application. |
