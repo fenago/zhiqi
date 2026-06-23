@@ -45,14 +45,21 @@ def read_schedule(path: str, sheet: str = SCHEDULE_SHEET):
 def write_rows(path: str, headers: list[str], rows: list[dict],
                extra_cols: list[str] | None = None, sheet_name: str = "Sheet1"):
     """Write rows to an .xlsx file. ``extra_cols`` are appended after ``headers``."""
+    return write_sheets(path, [(sheet_name, rows)], headers, extra_cols)
+
+
+def write_sheets(path: str, sheets: list[tuple[str, list[dict]]],
+                 headers: list[str], extra_cols: list[str] | None = None):
+    """Write multiple named sheets to one .xlsx. ``sheets`` = [(name, rows), ...]."""
     extra_cols = extra_cols or []
     out_headers = list(headers) + [c for c in extra_cols if c not in headers]
     wb = Workbook()
-    ws = wb.active
-    ws.title = sheet_name
-    ws.append(out_headers)
-    for row in rows:
-        ws.append([_clean(row.get(h)) for h in out_headers])
+    for i, (name, rows) in enumerate(sheets):
+        ws = wb.active if i == 0 else wb.create_sheet()
+        ws.title = name[:31]  # Excel sheet-name limit
+        ws.append(out_headers)
+        for row in rows:
+            ws.append([_clean(row.get(h)) for h in out_headers])
     wb.save(path)
     return path
 

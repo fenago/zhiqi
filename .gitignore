@@ -4,3 +4,4 @@ output/
 *.xlsb
 .venv/
 venv/
+runs/

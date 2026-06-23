@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CMR Results &middot; {{ filename }}</title>
+  <style>
+    :root { --navy:#0b2545; --blue:#1d6fb8; --bg:#f4f6fa; --line:#dde3ec;
+            --red:#c0392b; --amber:#b8860b; --green:#1e8449; }
+    * { box-sizing:border-box; }
+    body { font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+           margin:0; background:var(--bg); color:#1a2330; }
+    header { background:var(--navy); color:#fff; padding:20px 28px;
+             display:flex; justify-content:space-between; align-items:center; }
+    header h1 { margin:0; font-size:18px; }
+    header a { color:#bcd6f0; font-size:13px; text-decoration:none; }
+    .wrap { max-width:1100px; margin:28px auto; padding:0 20px; }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+             gap:14px; margin-bottom:26px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px;
+            padding:18px 20px; box-shadow:0 1px 3px rgba(10,30,60,.05); }
+    .card .n { font-size:30px; font-weight:700; color:var(--navy); }
+    .card .l { font-size:13px; color:#5a6b82; margin-top:4px; }
+    .card .sub { font-size:12px; color:#8090a4; margin-top:6px; }
+    .card.red .n { color:var(--red); } .card.green .n { color:var(--green); }
+    .card.amber .n { color:var(--amber); }
+    section { background:#fff; border:1px solid var(--line); border-radius:12px;
+              padding:22px; margin-bottom:22px; }
+    section h2 { margin:0 0 14px; font-size:16px; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); }
+    th { color:#5a6b82; font-weight:600; background:#fafbfd; }
+    .pill { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px;
+            font-weight:700; }
+    .pill.Error { background:#fdecec; color:var(--red); }
+    .pill.Warning { background:#fdf6e3; color:var(--amber); }
+    .tag { font-family:ui-monospace,Menlo,monospace; font-size:12px; }
+    .dl a { display:inline-block; margin:0 10px 10px 0; background:var(--blue);
+            color:#fff; padding:9px 14px; border-radius:8px; text-decoration:none;
+            font-size:13px; font-weight:600; }
+    .dl a.sec { background:#5a6b82; }
+    .muted { color:#8090a4; font-size:13px; }
+    .orgtag { font-family:ui-monospace,monospace; font-size:11px; color:#5a6b82; }
+    .clean { color:var(--green); font-weight:600; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>CMR Results &middot; <span style="opacity:.85">{{ filename }}</span></h1>
+    <a href="{{ url_for('index') }}">&larr; Process another CMR</a>
+  </header>
+  <div class="wrap">
+
+    <div class="cards">
+      <div class="card">
+        <div class="n">{{ filter.kept }}</div>
+        <div class="l">Sections in scope</div>
+        <div class="sub">
+          {% for o,c in filter.by_org.items() %}{{ o }}:{{ c }} {% endfor %}
+        </div>
+      </div>
+      <div class="card {{ 'red' if duration.mismatch_count else 'green' }}">
+        <div class="n">{{ duration.mismatch_count }}</div>
+        <div class="l">Duration mismatches</div>
+        <div class="sub">tol {{ duration.tolerance }} &middot;
+          {{ duration.within_tolerance_count }} flagged within tol</div>
+      </div>
+      <div class="card {{ 'red' if integrity_counts.Error else 'green' }}">
+        <div class="n">{{ integrity_counts.Error }}</div>
+        <div class="l">Integrity errors</div>
+        <div class="sub">{{ integrity_counts.Warning }} warnings &middot;
+          {{ integrity_counts.OK }} ok</div>
+      </div>
+      <div class="card amber">
+        <div class="n">{{ adjunct.adjunct_count }}</div>
+        <div class="l">Adjunct pool (unassigned)</div>
+        <div class="sub">
+          {% for o,c in adjunct.by_org.items() %}{{ o }}:{{ c }} {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <section>
+      <h2>Downloads</h2>
+      <div class="dl">
+        <a href="{{ url_for('download', run_id=run_id, filename=main_workbook) }}">
+          Processed Workbook (Main + Adjunct Pool)</a>
+        <a class="sec" href="{{ url_for('download', run_id=run_id, filename='Adjunct_Pool.xlsx') }}">Adjunct Pool</a>
+        <a class="sec" href="{{ url_for('download', run_id=run_id, filename='Integrity_Report.xlsx') }}">Integrity Report</a>
+        <a class="sec" href="{{ url_for('download', run_id=run_id, filename='Duration_Mismatch_Report.xlsx') }}">Duration Mismatches</a>
+        <a class="sec" href="{{ url_for('download', run_id=run_id, filename='analysis_summary.md') }}">Analysis Summary</a>
+        {% if llm %}<a class="sec" href="{{ url_for('download', run_id=run_id, filename='analysis_llm.md') }}">Claude Analysis</a>{% endif %}
+      </div>
+    </section>
+
+    <section>
+      <h2>Integrity issues
+        {% if integrity_view %}({{ integrity_view|length }}){% endif %}</h2>
+      {% if integrity_view %}
+      <table>
+        <tr><th>Severity</th><th>Course</th><th>Description</th><th>Comp</th>
+            <th>Org</th><th>Flags</th></tr>
+        {% for r in integrity_view %}
+        <tr>
+          <td><span class="pill {{ r.severity }}">{{ r.severity }}</span></td>
+          <td>{{ r.course }}</td><td>{{ r.descr }}</td><td>{{ r.comp }}</td>
+          <td class="orgtag">{{ r.org }}</td><td class="tag">{{ r.flags }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% else %}<p class="clean">No integrity issues found.</p>{% endif %}
+    </section>
+
+    <section>
+      <h2>Adjunct pool &mdash; unassigned sections ({{ adjunct_view|length }})</h2>
+      <p class="muted">Classes where <span class="tag">Assigned Instr(s)? = N</span>.
+        These need an adjunct.</p>
+      {% if adjunct_view %}
+      <table>
+        <tr><th>Course</th><th>Description</th><th>Comp</th><th>Org</th>
+            <th>Class&nbsp;Nbr</th><th>Sect</th><th>Days</th><th>Mode</th><th>Cap</th></tr>
+        {% for r in adjunct_view %}
+        <tr>
+          <td>{{ r.course }}</td><td>{{ r.descr }}</td><td>{{ r.comp }}</td>
+          <td class="orgtag">{{ r.org }}</td><td>{{ r.class_nbr }}</td>
+          <td>{{ r.section }}</td><td>{{ r.days }}</td><td>{{ r.mode }}</td>
+          <td>{{ r.cap }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% else %}<p class="clean">No unassigned sections.</p>{% endif %}
+    </section>
+
+  </div>
+</body>
+</html>

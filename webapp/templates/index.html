@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MDC CMR Processor</title>
+  <style>
+    :root { --navy:#0b2545; --blue:#1d6fb8; --bg:#f4f6fa; --line:#dde3ec; }
+    * { box-sizing:border-box; }
+    body { font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+           margin:0; background:var(--bg); color:#1a2330; }
+    header { background:var(--navy); color:#fff; padding:22px 28px; }
+    header h1 { margin:0; font-size:20px; }
+    header p { margin:4px 0 0; opacity:.8; font-size:13px; }
+    .wrap { max-width:760px; margin:40px auto; padding:0 20px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px;
+            padding:30px; box-shadow:0 1px 3px rgba(10,30,60,.05); }
+    h2 { margin-top:0; font-size:18px; }
+    .drop { border:2px dashed var(--blue); border-radius:12px; padding:38px;
+            text-align:center; background:#f7fbff; cursor:pointer; transition:.15s; }
+    .drop:hover { background:#eef6ff; }
+    .drop input { display:none; }
+    .drop .big { font-size:15px; color:var(--navy); font-weight:600; }
+    .drop .sub { font-size:13px; color:#5a6b82; margin-top:6px; }
+    .fname { margin-top:14px; font-size:14px; color:var(--blue); font-weight:600; }
+    button { margin-top:22px; width:100%; background:var(--blue); color:#fff;
+             border:0; padding:13px; border-radius:9px; font-size:15px; font-weight:600;
+             cursor:pointer; }
+    button:hover { background:#155a96; }
+    .steps { margin-top:24px; font-size:13px; color:#5a6b82; line-height:1.7; }
+    .steps b { color:var(--navy); }
+    .err { background:#fdecec; border:1px solid #f5b5b5; color:#a12626;
+           padding:12px 14px; border-radius:8px; margin-bottom:18px; font-size:14px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Miami Dade College &middot; CMR Processor</h1>
+    <p>Course selection pipeline POC &mdash; ingest, validate &amp; clean the schedule</p>
+  </header>
+  <div class="wrap">
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    <div class="card">
+      <h2>Upload the initial CMR</h2>
+      <form method="post" action="{{ url_for('process') }}" enctype="multipart/form-data">
+        <label class="drop" id="drop">
+          <input type="file" name="cmr" id="file" accept=".xlsb,.xlsx" required>
+          <div class="big">Click to choose the CMR spreadsheet</div>
+          <div class="sub">.xlsb or .xlsx &middot; the Collegewide CMR export</div>
+          <div class="fname" id="fname"></div>
+        </label>
+        <button type="submit">Process CMR</button>
+      </form>
+      <div class="steps">
+        Runs: <b>Step 0</b> ingest &rarr; <b>Step 1</b> filter to Kendall
+        Architecture / Engineering / Technology &rarr; <b>Step 1b</b> duration
+        validation + integrity checks &rarr; <b>Step 2</b> adjunct pool (unassigned
+        sections).
+      </div>
+    </div>
+  </div>
+  <script>
+    const file=document.getElementById('file'), fname=document.getElementById('fname');
+    file.addEventListener('change',()=>{ fname.textContent = file.files[0] ? file.files[0].name : ''; });
+  </script>
+</body>
+</html>

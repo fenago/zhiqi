@@ -448,13 +448,41 @@ worlds" — rules stay in Python, the LLM only interprets). `cmr_pipeline/analys
   Blended example (48 cch, 12W, 1 day): LEC 55 + LAB 45 = 100; expected `48×50/12/1 = 200`,
   halved = 100 → **Validated**. Formula and combine-logic confirmed against the CMR.
 
-## 6. Step 2 — Selection *(to be captured)*
+## 6. Step 2 — Selection
 
 - **2a — Full-Time Faculty** pick first ("first dibs"). Signals: `KENDL FTF`,
   `Assigned Instr(s)?`, `Instructor`, `FTF_Kendall` + `Chairs` tables, `Workload` tab.
 - **2b — Adjunct sub-process** for leftover/unselected sections: coordination,
   availability, schedule collection. Signals: `KENDL ADJ`, `ADJ_Kendall` table,
   `PT Kendl` pivot. **Mailbox/auto-respond integration lives here.**
+
+### 6.1 Adjunct pool extraction (IMPLEMENTED)
+
+**Rule:** a class with **`Assigned Instr(s)? = N`** has no instructor assigned and
+therefore falls to the **adjunct pool** (an adjunct must be found for it). Extract all
+`N` rows into a separate tab.
+
+- Implemented in `cmr_pipeline/step2_adjunct.py`; runs on the Step 1 / Step 1b output.
+- **Ignored rows excluded:** spurious 450060 labs (the 450060 no-lab rule) are not real
+  sections to staff, so they're left out of the pool.
+- **First-run result:** **38** sections in the adjunct pool (Architecture 10,
+  Engineering 12, Technology 16). (39 rows are `N`; 1 is the ignored CTS1120 lab.)
+- Output: a dedicated **`Adjunct Pool`** tab in the processed workbook, plus a standalone
+  `Adjunct_Pool.xlsx`.
+
+## 6b. Web UI (IMPLEMENTED)
+
+`webapp/` is a Flask app to upload a CMR and run the pipeline through Step 2.
+
+- **Run:** `pip install -r requirements.txt` then `python -m webapp.app`
+  (visit `http://localhost:5000`). Optional `PORT=` and `ANTHROPIC_API_KEY=` (enables the
+  live Claude analysis).
+- **Flow:** upload `.xlsb`/`.xlsx` → Step 0 ingest → Step 1 filter → Step 1b duration +
+  integrity → Step 2 adjunct pool → results page with summary cards (sections in scope,
+  duration mismatches, integrity errors/warnings, adjunct pool), an integrity-issues
+  table, the adjunct-pool table, and downloads (processed workbook with Main + Adjunct
+  Pool tabs, focused reports, analysis).
+- The pipeline is exposed programmatically via `cmr_pipeline.run.process(cmr, out_dir)`.
 
 ## 7. Step 3 — Classroom Assignment & Step 4 — Capacity Check *(to be captured)*
 

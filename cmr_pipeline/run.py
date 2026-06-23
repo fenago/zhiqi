@@ -1,22 +1,75 @@
-"""CLI orchestrator for the CMR pipeline (POC).
+"""CLI / programmatic orchestrator for the CMR pipeline (POC).
 
 Usage:
-    python -m cmr_pipeline.run <CMR.xlsb> [--out OUTPUT_DIR]
+    python -m cmr_pipeline.run <CMR.xlsb> [--out OUTPUT_DIR] [--no-analyze]
 
-Runs: read Schedule -> Step 1 filter -> Step 1b duration validation ->
-write Main file + mismatch report + analysis artifacts.
+Runs: read Schedule -> Step 1 filter -> Step 1b duration validation + integrity
+-> Step 2 adjunct-pool extraction -> write workbook (Main + Adjunct Pool tabs) +
+reports + analysis.
+
+``process()`` returns a structured result dict for programmatic callers (e.g. the UI).
 """
 from __future__ import annotations
 
 import argparse
 import os
 
-from . import io, step1_filter, step1b_duration, integrity, analysis
+from . import io, step1_filter, step1b_duration, integrity, step2_adjunct, analysis
 from .step1b_duration import OUTPUT_COLS as DUR_COLS, C_STATUS
 from .integrity import OUTPUT_COLS as INT_COLS
 from . import config
 
 OUTPUT_COLS = DUR_COLS + INT_COLS
+
+MAIN_WORKBOOK = "Main_CMR_Processed.xlsx"
+
+
+def process(cmr_path: str, out_dir: str, want_llm: bool = True) -> dict:
+    """Run the full pipeline. Returns a structured result dict and writes artifacts."""
+    os.makedirs(out_dir, exist_ok=True)
+
+    headers, rows = io.read_schedule(cmr_path)
+
+    kept, freport = step1_filter.filter_schedule(rows)
+    dreport = step1b_duration.validate(kept)
+    ireport = integrity.check(kept)
+    adjunct_rows, areport = step2_adjunct.extract_adjunct_pool(kept)
+
+    # --- workbook with Main + Adjunct Pool tabs ---
+    main_path = os.path.join(out_dir, MAIN_WORKBOOK)
+    io.write_sheets(main_path,
+                    [("Main", kept), ("Adjunct Pool", adjunct_rows)],
+                    headers, extra_cols=OUTPUT_COLS)
+
+    # --- focused reports ---
+    mismatches = [r for r in kept if r.get(C_STATUS) == config.STATUS_MISMATCH]
+    int_rows = ireport["errors"] + ireport["warnings"]
+    io.write_rows(os.path.join(out_dir, "Duration_Mismatch_Report.xlsx"),
+                  headers, mismatches, extra_cols=OUTPUT_COLS, sheet_name="Mismatches")
+    io.write_rows(os.path.join(out_dir, "Integrity_Report.xlsx"),
+                  headers, int_rows, extra_cols=OUTPUT_COLS, sheet_name="Integrity")
+    io.write_rows(os.path.join(out_dir, "Adjunct_Pool.xlsx"),
+                  headers, adjunct_rows, extra_cols=OUTPUT_COLS, sheet_name="Adjunct Pool")
+
+    # --- analysis (deterministic + live Claude) ---
+    summary = analysis.build_summary(freport, dreport, ireport)
+    artifacts = analysis.run(summary, want_llm=want_llm)
+    for name, text in artifacts.items():
+        with open(os.path.join(out_dir, name), "w") as fh:
+            fh.write(text)
+
+    return {
+        "headers": headers,
+        "filter": freport,
+        "duration": dreport,
+        "integrity": ireport,
+        "adjunct": areport,
+        "adjunct_rows": adjunct_rows,
+        "kept": kept,
+        "out_dir": out_dir,
+        "main_workbook": MAIN_WORKBOOK,
+        "llm": "analysis_llm.md" if "analysis_llm.md" in artifacts else None,
+    }
 
 
 def main(argv=None):
@@ -27,61 +80,20 @@ def main(argv=None):
                     help="Skip the live Claude analysis call (still writes prompt+summary)")
     args = ap.parse_args(argv)
 
-    os.makedirs(args.out, exist_ok=True)
-
     print(f"[step 0] Reading {args.cmr} ...")
-    headers, rows = io.read_schedule(args.cmr)
-    print(f"          {len(rows)} schedule rows, {len(headers)} columns")
+    r = process(args.cmr, args.out, want_llm=not args.no_analyze)
 
-    print("[step 1] Filtering to 3 Kendall departments ...")
-    kept, freport = step1_filter.filter_schedule(rows)
-    print(f"          kept {freport['kept']} sections  (by org: {freport['by_org']})")
-    print(f"          dropped reasons: {freport['drop_reasons']}")
-
-    print("[step 1b] Validating durations ...")
-    dreport = step1b_duration.validate(kept)
-    print(f"          status counts: {dreport['status_counts']}")
-    print(f"          mismatches: {dreport['mismatch_count']}  "
-          f"(tolerance: {dreport['tolerance']})")
-
-    print("[step 1b] Running integrity checks (A1-D1) ...")
-    ireport = integrity.check(kept)
-    print(f"          integrity: {ireport['status_counts']}")
-    print(f"          flags: {ireport['code_counts']}")
-
-    # --- write data artifacts ---
-    main_path = os.path.join(args.out, "Main_Step1b_Duration_Validated.xlsx")
-    io.write_rows(main_path, headers, kept, extra_cols=OUTPUT_COLS,
-                  sheet_name="Main")
-    print(f"[out] {main_path}")
-
-    mismatches = [r for r in kept if r.get(C_STATUS) == config.STATUS_MISMATCH]
-    report_path = os.path.join(args.out, "Duration_Mismatch_Report.xlsx")
-    io.write_rows(report_path, headers, mismatches, extra_cols=OUTPUT_COLS,
-                  sheet_name="Mismatches")
-    print(f"[out] {report_path}  ({len(mismatches)} rows)")
-
-    integrity_rows = ireport["errors"] + ireport["warnings"]
-    int_path = os.path.join(args.out, "Integrity_Report.xlsx")
-    io.write_rows(int_path, headers, integrity_rows, extra_cols=OUTPUT_COLS,
-                  sheet_name="Integrity")
-    print(f"[out] {int_path}  ({len(integrity_rows)} rows)")
-
-    # --- analysis layer (deterministic + live Claude) ---
-    summary = analysis.build_summary(freport, dreport, ireport)
-    print(f"[analysis] duration tolerance: {dreport['tolerance']}  |  "
-          f"within-tolerance flagged: {dreport.get('within_tolerance_count', 0)}")
-    artifacts = analysis.run(summary, want_llm=not args.no_analyze)
-    if "analysis_llm.md" in artifacts:
-        print("[analysis] live Claude analysis: OK -> analysis_llm.md")
-    elif "analysis_llm_SKIPPED.txt" in artifacts:
-        print("[analysis] live Claude analysis: skipped (see analysis_llm_SKIPPED.txt)")
-    for name, text in artifacts.items():
-        p = os.path.join(args.out, name)
-        with open(p, "w") as fh:
-            fh.write(text)
-        print(f"[out] {p}")
-
+    print(f"[step 1]  kept {r['filter']['kept']} sections  (by org: {r['filter']['by_org']})")
+    print(f"[step 1b] duration: {r['duration']['status_counts']}")
+    print(f"          mismatches: {r['duration']['mismatch_count']}  "
+          f"(tolerance: {r['duration']['tolerance']}; "
+          f"within-tolerance flagged: {r['duration'].get('within_tolerance_count', 0)})")
+    print(f"[step 1b] integrity: {r['integrity']['status_counts']}  "
+          f"flags: {r['integrity']['code_counts']}")
+    print(f"[step 2]  adjunct pool (Assigned Instr(s)?=N): {r['adjunct']['adjunct_count']}  "
+          f"(by org: {r['adjunct']['by_org']})")
+    print(f"[analysis] live Claude: {'OK -> analysis_llm.md' if r['llm'] else 'skipped'}")
+    print(f"[out] workbook: {os.path.join(args.out, r['main_workbook'])}")
     print("\nDone.")
     return 0
 
