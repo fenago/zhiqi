@@ -35,6 +35,12 @@
 
 ## 2. System Overview
 
+> **Core objective.** The CMR arrives with **many data errors**. The early stages of
+> this pipeline are fundamentally a **data quality / cleaning effort**: validate and
+> correct the schedule so it is trustworthy **before** it is sent to faculty for course
+> selection. Garbage-in would propagate into faculty selection, room assignment, and
+> capacity — so cleaning up front is the whole point of Steps 1–1b.
+
 The workflow is a multi-stage pipeline. The CMR is a **living master**; each stage
 applies validations / gateways / constraints (via a set of prompts to be supplied)
 and writes results back.
@@ -170,11 +176,101 @@ so this class stays in scope; physical location is tracked separately for Step 3
 
 ---
 
-## 5. Step 1b — Duration *(to be captured)*
+## 5. Step 1b — Duration Validation (Data Quality / Cleaning)
 
-Determine session/term offerings and whether new sections must be created.
-Driven by `Session Code`, `Duration`, `Class Duration`, `Start/End Date`, validated
-against the `Session_Duration` table in *Tables 1–4*. **Prompts to be supplied.**
+> **Objective (WHY this step exists).** The CMR arrives with **many data errors**.
+> Step 1b is a **data quality / validation check** whose goal is to **clean and
+> validate** the schedule data so it is correct **before** it is sent out to
+> full-time faculty for course selection (Step 2). It is a remediation gate, not
+> just a report — mismatches are meant to be **found and fixed**. A clean schedule
+> is a precondition for the selection process.
+
+**Input:** the `"Main_…"` file — i.e., the **Step 1 filtered output (the 184 sections)**.
+**Source spec:** `Instructions_for_Duration_Validation_Fall_Spring.docx` (captured below).
+
+### 5.1 Reference data (from the spec)
+
+- **`Duration`** column displays as `H:MM:SS` (stored as fraction-of-day in the xlsb;
+  minutes = `Duration × 1440`).
+- **`Crs Cntct Hrs`**: 1 contact hour = **50 minutes**.
+- **`Session Code` → weeks:** `1`→16, `WKD`→16, `6W1`→6, `6W2`→6, `8W1`→8, `8W2`→8,
+  `10W`→10, `12W`→12, `14W`→14.
+- **`Concat Days` → number of days:** `M/T/W/R/F/S`→1, `MW`→2, `TR`→2, `MWF`→3, `MTWR`→4
+  (count the day letters).
+- **`Instr Mode`:** `P (In Person)` full meeting/full duration; `LV (MDC Live)` full;
+  `BL (Blended)` **half** meeting pattern / **half** duration; `EX (Credit by Exam)`
+  none; `IN (Independent Study)` none.
+- **`Comp`:** `LEC` lecture, `LAB` lab, `PRA` practicum (**treat PRA as LAB**).
+
+### 5.2 Core validation logic
+
+```
+expected_min = Crs Cntct Hrs * 50 / weeks / days
+  - if Acad Org == 450060: remap Crs Cntct Hrs first (80→64, 64→48)  [see 5.4]
+  - if Instr Mode == BL:   expected_min *= 0.5  (blended = half duration)
+  - if Instr Mode in (EX, IN): no meeting/no duration → N/A (skip)
+actual_min = Duration * 1440
+```
+
+### 5.3 Linked LEC + LAB/PRA sections — Acad Org `300020` and `450034` only
+
+Treat a linked LEC and its LAB/PRA as **one combined class** for validation.
+**Link conditions (ALL must hold):** same `Class Descr`, **adjacent rows**, same
+`Concat Days`, and the LAB/PRA `Mtg Start` == the LEC `Mtg End` (LAB/PRA starts
+exactly when LEC ends).
+
+When linked:
+- `actual = LEC actual + LAB/PRA actual` (sum both durations).
+- `expected = computed from the LEC's `Crs Cntct Hrs` only`; put combined total on LEC row.
+- Validate **once** using the combined duration.
+- **LEC row** carries the actual validation result.
+- **LAB/PRA row** is **not** independently validated → mark
+  `"Validated together with linked LEC section"`; use `"See above"` in the
+  *Expected Duration* and *Notes* columns.
+- If combined result = **mismatch** → mark **both** rows `"Mismatch"`.
+- If combined result = validated within tolerance → LEC `"Validated"`,
+  LAB/PRA `"Validated together with linked LEC section"`.
+
+### 5.4 Acad Org `450060` (Technology) special remap
+
+Before computing expected duration, remap `Crs Cntct Hrs`:
+- `80` → `64`
+- `64` → `48`
+
+**High impact:** in the 184 set, 74 of 450060's rows have `80` and 7 have `64`, so
+this remap affects nearly every Technology section. (Working assumption: clock-hour →
+contact-hour conversion for Technology programs — confirm.)
+
+### 5.5 Tolerance
+
+- Classes off by **less than 10% of total duration (minutes)** → considered validated,
+  but **can be flagged and noted**.
+- Linked-section result handling text also references **"less than 10 minutes
+  difference"** as the allowed tolerance.
+- ⚠️ **Ambiguity (Q8):** is the canonical tolerance **10%**, **10 minutes**, or 10% for
+  general pass-with-flag and 10 min for "clean pass"? **Needs confirmation.**
+
+### 5.6 Output (append columns; preserve original row order)
+
+| Column | Meaning |
+|---|---|
+| Current Duration in minutes | `Duration × 1440` (combined for linked LEC) |
+| Expected Duration in minutes | computed; `"See above"` for inherited LAB/PRA rows |
+| Validation Status | `Validated` / `Mismatch` / `Validated together with linked LEC section` / `N/A` |
+| Notes | how many minutes to **add or subtract** for mismatches; `"See above"` for inherited rows |
+
+Use consistent terminology throughout the file.
+
+### 5.7 Implementation approach (recommended)
+
+- Build as a **deterministic rules engine** (Python), with this spec as the written
+  reference — *not* a literal LLM prompt. The arithmetic and row-adjacency logic must
+  be exact and reproducible across 184+ rows. Optionally use an LLM only for fuzzy
+  value parsing or natural-language Notes (hybrid).
+- Validated against real data: e.g. 300020 "Arch Design 1" (P, MW, full term, 48 cch):
+  LEC 25 min + LAB 50 min = 75 min combined; expected `48×50/16/2 = 75` → **Validated**.
+  Blended example (48 cch, 12W, 1 day): LEC 55 + LAB 45 = 100; expected `48×50/12/1 = 200`,
+  halved = 100 → **Validated**. Formula and combine-logic confirmed against the CMR.
 
 ## 6. Step 2 — Selection *(to be captured)*
 
@@ -205,6 +301,11 @@ against the `Session_Duration` table in *Tables 1–4*. **Prompts to be supplied
 | Q5 | Step 1 filter authority: `Acad Org` only (278) vs `Acad Org` + Kendall location (277)? | Resolved → filter by `Acad Org` (ownership); location tracked separately. |
 | Q6 | Reconcile step numbering (Filter vs Duration as "Step 1"). | Open |
 | Q7 | Should excluded rows (non-active 42, `9999`-cap 52) be dropped entirely or set aside in the master CMR? | Open (default: set aside, don't delete) |
+| Q8 | Duration tolerance: 10% of total minutes, 10 minutes, or both (10% pass-with-flag vs 10-min clean pass)? | Open — needs confirmation |
+| Q9 | Confirm 450060 remap (80→64, 64→48) applies only to Acad Org 450060 and to all its sections. | Open (working: yes, clock→contact hr conversion) |
+| Q10 | "Main_" file = the Step 1 filtered 184-row output? Adjacency for linking = within the filtered Main file? | Open |
+| Q11 | Dynamic sessions (`DYN`/`DYS`): compute weeks from `Start/End Date` when Session Code not in week map? | Open |
+| Q12 | Step 1b is a **remediation gate**: should the app auto-fix durations, or only flag for human correction before Step 2? | Open |
 
 ---
 
@@ -216,4 +317,6 @@ against the `Session_Duration` table in *Tables 1–4*. **Prompts to be supplied
 | 2026-06-23 | Step 1 filter targets **`Acad Org` ∈ {300020, 450034, 450060}**, validated to 278 rows. |
 | 2026-06-23 | **Canonical Step 1 filter CONFIRMED**: `Acad Org ∈ {300020,450034,450060}` + `Class Status = A` + `Cap Enrl ≠ 9999` → **184 sections** (matches manual count). `9999` is a sentinel-cap category (52 rows), not a single row. |
 | 2026-06-23 | Step 1 scoped by **`Acad Org` (department ownership)**; physical location handled later (Q5 resolved). |
+| 2026-06-23 | **Core objective recorded:** Steps 1–1b are a data-quality/cleaning effort — validate & fix the CMR *before* it goes to faculty for selection. Step 1b (Duration Validation) is a **remediation gate**, not just a report. |
+| 2026-06-23 | Duration Validation spec captured from `Instructions_for_Duration_Validation_Fall_Spring.docx`; formula confirmed against real CMR data. |
 | 2026-06-23 | Process to be captured in this living document **before** building the application. |
