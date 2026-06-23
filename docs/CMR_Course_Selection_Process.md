@@ -312,6 +312,36 @@ Duration validation (10% tolerance) results:
 - **Tolerance choice now has visible stakes (Q8):** mismatches by rule —
   exact: 36 (all ≤7 min) · 5 min: 1 · 10 min: 0 · 10%: 0 · 5%: 0.
 
+### 5.9 Integrity-check catalog (Step 1b extension) — DRAFT, being ratified
+
+The duration formula (S5.2) is one check. These are **additional, independent**
+checks layered on top — they catch errors the formula cannot see (a row can pass
+duration yet still be bad, e.g. ARC2580). Each check emits a flag + note; a row may
+carry several. Status tracks our rule-by-rule ratification.
+
+**Core duration formula (foundation, implemented):**
+`Expected = Crs Cntct Hrs × 50 min ÷ weeks ÷ days` (× 0.5 for BL; 450060 cch remap first).
+
+| ID | Check | Precise rule | Severity | Status |
+|---|---|---|---|---|
+| A1 | Linked-pair Cap Enrl mismatch | linked LEC.`Cap Enrl` must equal LAB/PRA.`Cap Enrl` → flag both | Error | proposed (exact-equal: confirm) |
+| A2 | Linked-pair field consistency (safety net) | within a linked pair, flag if `Instr Mode`, `Session Code`, or `Crs Cntct Hrs` differ | **Warning** | **CONFIRMED — keep as safety net** |
+| B1 | Comp mislabel (`LEC/LEC`) | candidate pair (adjacent + same `Class Descr` + same `Concat Days`) where 2nd row is `LEC` and its `Mtg Start` == 1st `Mtg End` → flag mislabel | Error | proposed |
+| B2 | Time misalignment | candidate pair that is LEC→LAB/PRA but `Mtg Start` ≠ `Mtg End` (only failing link cond.) → flag, report gap mins | Error | proposed |
+| B3 | Orphan component | LAB/PRA with no linked LEC before it; or LEC with a same-descr lab that isn't adjacent | Warning | proposed (in/out?) |
+| B4 | Duplicate component | same `Class Descr`+days with two LECs or two LABs | Warning | proposed (in/out?) |
+| C1 | Rollover / invalid times | `Mtg End` ≤ `Mtg Start` or AM/PM rollover producing wrong duration | Error | proposed (define "rollover") |
+| C2 | Internal duration inconsistency | `Duration` column ≠ (`Mtg End` − `Mtg Start`) | Error | proposed (in/out?) |
+| D1 | Missing required fields | zero/blank `Cap Enrl`, missing `Mtg Start/End` or `Concat Days` on active in-person/live section | Warning | proposed (which fields mandatory?) |
+
+**Candidate-pair definition (basis for B1/B2):** two **adjacent** rows with the **same
+`Class Descr`** and **same `Concat Days`** (2 of the 4 link conditions already hold).
+— *pending confirmation.*
+
+**Open decisions:** (1) which checks are in scope; (2) A2 confirmed; (3) candidate-pair
+basis; (4) precise meaning of "rollover"; (5) severity model — two-tier Error/Warning
+(Error = must fix before faculty selection) vs single "Mismatch".
+
 ### 5.7 Implementation approach (recommended)
 
 - Build as a **deterministic rules engine** (Python), with this spec as the written
