@@ -330,7 +330,7 @@ carry several. Status tracks our rule-by-rule ratification.
 | B2 | Time misalignment | candidate pair that is LEC→LAB/PRA but `Mtg Start` ≠ `Mtg End` (only failing link cond.) → flag, report gap mins | Error | proposed |
 | B3 | Orphan component | LAB/PRA with no linked LEC before it; or LEC with a same-descr lab that isn't adjacent | Warning | proposed (in/out?) |
 | B4 | Duplicate component | same `Class Descr`+days with two LECs or two LABs | Warning | proposed (in/out?) |
-| C1 | Rollover / invalid times | `Mtg End` ≤ `Mtg Start` or AM/PM rollover producing wrong duration | Error | proposed (define "rollover") |
+| C1 | Rollover / invalid times | `Mtg End` ≤ `Mtg Start` or AM/PM rollover producing wrong duration | **Warning (needs human eyes)** | **CONFIRMED severity** — exact definition of "rollover" still pending |
 | C2 | Internal duration inconsistency | `Duration` column ≠ (`Mtg End` − `Mtg Start`) | Error | proposed (in/out?) |
 | D1 | Missing required fields | zero/blank `Cap Enrl`, missing `Mtg Start/End` or `Concat Days` on active in-person/live section | Warning | proposed (which fields mandatory?) |
 
@@ -338,9 +338,12 @@ carry several. Status tracks our rule-by-rule ratification.
 `Class Descr`** and **same `Concat Days`** (2 of the 4 link conditions already hold).
 — *pending confirmation.*
 
+**Severity model (CONFIRMED):** two tiers — **Error** (must fix before the schedule
+goes to faculty) and **Warning** (flag for human review, non-blocking).
+
 **Open decisions:** (1) which checks are in scope; (2) A2 confirmed; (3) candidate-pair
-basis; (4) precise meaning of "rollover"; (5) severity model — two-tier Error/Warning
-(Error = must fix before faculty selection) vs single "Mismatch".
+basis; (4) C1 severity confirmed = Warning, but precise meaning of "rollover" still
+pending; (5) severity model confirmed (two-tier).
 
 ### 5.7 Implementation approach (recommended)
 
