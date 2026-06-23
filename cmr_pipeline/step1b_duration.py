@@ -99,10 +99,18 @@ def _note_for(actual, expected) -> str:
 
 # ---- linking ----------------------------------------------------------------
 def _is_linked_pair(lec, lab) -> bool:
-    """True if `lab` (LAB/PRA) links to `lec` (LEC) per the spec conditions."""
+    """True if `lab` (LAB/PRA) links to `lec` (LEC) per the spec conditions.
+
+    ALL must hold (Acad Org 300020/450034 only; checked by caller):
+      1. lec is LEC, lab is LAB or PRA (LEC immediately precedes the lab)
+      2. same Class Descr (exact, case/space-sensitive)
+      3. same Concat Days
+      4. lab Mtg Start == lec Mtg End, exactly (zero tolerance, to the minute)
+    Cardinality is 1:1 -- the caller pairs a LEC with only the next row.
+    """
     if _comp(lec) != "LEC" or _comp(lab) not in config.LAB_COMPONENTS:
         return False
-    if lec.get("Class Descr") != lab.get("Class Descr"):
+    if lec.get("Class Descr") != lab.get("Class Descr"):       # exact match
         return False
     if str(lec.get("Concat Days")) != str(lab.get("Concat Days")):
         return False
@@ -110,8 +118,8 @@ def _is_linked_pair(lec, lab) -> bool:
     lab_start = _f(lab.get("Mtg Start"))
     if lec_end is None or lab_start is None:
         return False
-    # LAB/PRA starts exactly when LEC ends (within ~1 minute)
-    return abs(lab_start - lec_end) * 1440 <= 1.0
+    # Zero tolerance: LAB/PRA must start exactly when the LEC ends (to the minute).
+    return round(lab_start * 1440) == round(lec_end * 1440)
 
 
 # ---- main -------------------------------------------------------------------

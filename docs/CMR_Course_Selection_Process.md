@@ -215,9 +215,33 @@ actual_min = Duration * 1440
 ### 5.3 Linked LEC + LAB/PRA sections — Acad Org `300020` and `450034` only
 
 Treat a linked LEC and its LAB/PRA as **one combined class** for validation.
-**Link conditions (ALL must hold):** same `Class Descr`, **adjacent rows**, same
-`Concat Days`, and the LAB/PRA `Mtg Start` == the LEC `Mtg End` (LAB/PRA starts
-exactly when LEC ends).
+
+**Precise link definition (confirmed 2026-06-23). ALL conditions must hold (AND):**
+
+| # | Condition | Exactness (confirmed) |
+|---|---|---|
+| 1 | **Ordering:** the LEC **immediately precedes** the lab — LEC at row N, LAB/PRA at row N+1, nothing between | LEC always first |
+| 2 | **Same `Class Descr`** | **Exact** match, case- and space-sensitive |
+| 3 | **Same `Concat Days`** | Exact |
+| 4 | **LAB/PRA `Mtg Start` == LEC `Mtg End`** | **Zero tolerance** — equal to the minute; 1 minute off breaks the link |
+
+- **Cardinality:** strictly **1 LEC ↔ 1 LAB/PRA**. One LEC never links to multiple
+  labs; a LEC is paired only with the single immediately-following row.
+- **Adjacency basis:** consecutive rows **in the `Main_` file being validated** (after
+  Step 1 filtering).
+- **Scope:** Acad Org `300020` and `450034` only. `450060` (Technology) does **not**
+  link — it uses the contact-hour remap and validates LEC/LAB independently.
+
+**Near-misses are error signals (double duty):** when a pair is *meant* to be one class
+but fails exactly one condition, the broken link is the data error —
+- Condition 4 fails (lab starts late, e.g. 7:05 vs 6:55) → not linked → surfaces as a
+  duration mismatch.
+- Second row mislabeled `LEC` instead of `LAB/PRA` (condition 1 component test) → not
+  linked → two "lectures" that don't validate correctly.
+
+**Out of scope of the link definition:** equal `Cap Enrl` between LEC and LAB is **not**
+a linking condition — it is a **separate integrity check** layered on linked pairs
+(e.g. ARC2580: links cleanly, validates on duration, but LEC cap 40 ≠ LAB cap 30).
 
 When linked:
 - `actual = LEC actual + LAB/PRA actual` (sum both durations).
@@ -330,7 +354,7 @@ Duration validation (10% tolerance) results:
 | Q7 | Should excluded rows (non-active 42, `9999`-cap 52) be dropped entirely or set aside in the master CMR? | Open (default: set aside, don't delete) |
 | Q8 | Duration tolerance: 10% of total minutes, 10 minutes, or both (10% pass-with-flag vs 10-min clean pass)? | Open — needs confirmation |
 | Q9 | Confirm 450060 remap (80→64, 64→48) applies only to Acad Org 450060 and to all its sections. | Open (working: yes, clock→contact hr conversion) |
-| Q10 | "Main_" file = the Step 1 filtered 184-row output? Adjacency for linking = within the filtered Main file? | Open |
+| Q10 | "Main_" file = the Step 1 filtered 184-row output? | Open (adjacency basis = Main_ file: **confirmed**) |
 | Q11 | Dynamic sessions (`DYN`/`DYS`): compute weeks from `Start/End Date` when Session Code not in week map? | Open |
 | Q12 | Step 1b is a **remediation gate**: should the app auto-fix durations, or only flag for human correction before Step 2? | Open |
 
@@ -346,4 +370,5 @@ Duration validation (10% tolerance) results:
 | 2026-06-23 | Step 1 scoped by **`Acad Org` (department ownership)**; physical location handled later (Q5 resolved). |
 | 2026-06-23 | **Core objective recorded:** Steps 1–1b are a data-quality/cleaning effort — validate & fix the CMR *before* it goes to faculty for selection. Step 1b (Duration Validation) is a **remediation gate**, not just a report. |
 | 2026-06-23 | Duration Validation spec captured from `Instructions_for_Duration_Validation_Fall_Spring.docx`; formula confirmed against real CMR data. |
+| 2026-06-23 | **Linked LEC/LAB definition finalized:** LEC immediately precedes lab (LEC first); 1:1 cardinality; exact `Class Descr` match; lab `Mtg Start` == lec `Mtg End` with **zero tolerance** (to the minute). Adjacency = within the `Main_` file. Code updated (removed prior 1-min tolerance). Equal `Cap Enrl` is a **separate** integrity check, not part of linking. |
 | 2026-06-23 | Process to be captured in this living document **before** building the application. |
