@@ -265,6 +265,12 @@ Before computing expected duration, remap `Crs Cntct Hrs`:
 this remap affects nearly every Technology section. (Working assumption: clock-hour →
 contact-hour conversion for Technology programs — confirm.)
 
+**450060 has no lab component (confirmed 2026-06-23).** Technology classes are
+single-component (combined `C`-suffix sections), so any `LAB`/`PRA` row in Acad Org
+`450060` is spurious and is **ignored** everywhere — not duration-validated (status
+`Ignored - Acad Org has no lab component`) and not integrity-checked. In the current
+file this affects exactly **1 row** (CTS1120 LAB). Config: `NO_LAB_ORGS = {"450060"}`.
+
 ### 5.5 Tolerance
 
 - Classes off by **less than 10% of total duration (minutes)** → considered validated,
@@ -401,12 +407,14 @@ conditions already hold, so the pair was *meant* to be one combined class.
 The duration validation columns (S5.6) are independent — a row can be duration-
 `Validated` while carrying an `Integrity Status = Error` (ARC2580 is exactly this).
 
-**First-run integrity results (184 sections):** Error 2 · Warning 1 · OK 181.
+**First-run integrity results (184 sections, after 450060 no-lab rule):**
+Error 2 · Warning 0 · OK 182.
 - `CAP_MISMATCH` ×2 — **ARC2580** "Arch Structures 1": LEC cap 40 ≠ LAB cap 30 (Error).
-- `MISSING_FIELDS` ×1 — **CTS1120** "Cybersecurity Fundamentals" LAB: blank
-  `Mtg Start`/`Mtg End`/`Concat Days` on an In-Person section (Warning).
-- (A B4 false positive on CGS1060C was caught during the run and the rule tightened —
-  see B4 above.) Implemented in `cmr_pipeline/integrity.py`.
+  The only real defect in the 3 departments.
+- Duration: 135 Validated · 48 linked · **1 Ignored** (CTS1120 LAB, 450060 no-lab rule).
+- (CTS1120's earlier `MISSING_FIELDS` warning is now suppressed — that lab is ignored
+  per the 450060 rule. A B4 false positive on CGS1060C was caught during the run and the
+  rule tightened — see B4.) Implemented in `cmr_pipeline/integrity.py`.
 
 ### 5.7 Implementation approach (recommended)
 

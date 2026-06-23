@@ -46,6 +46,11 @@ INSTR_MODE_FACTOR = {
 # PRA (practicum) is treated as LAB.
 LAB_COMPONENTS = {"LAB", "PRA"}
 
+# Acad Orgs that have NO separate lab component. Any LAB/PRA row in these orgs is
+# spurious and is ignored (not validated, not integrity-checked). 450060 (Technology)
+# courses are single-component (combined C-suffix sections).
+NO_LAB_ORGS = {"450060"}
+
 # Orgs whose linked LEC + LAB/PRA pairs are validated as one combined class.
 LINKED_ORGS = {"300020", "450034"}
 
@@ -67,4 +72,5 @@ STATUS_MISMATCH = "Mismatch"
 STATUS_LINKED = "Validated together with linked LEC section"
 STATUS_NA = "N/A - no meeting pattern"
 STATUS_INSUFFICIENT = "N/A - insufficient data"
+STATUS_IGNORED = "Ignored - Acad Org has no lab component"
 SEE_ABOVE = "See above"

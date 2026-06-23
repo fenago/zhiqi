@@ -48,6 +48,11 @@ def _comp(row) -> str:
     return "" if v is None else str(v).strip().upper()
 
 
+def is_ignored(row) -> bool:
+    """LAB/PRA rows in a no-lab Acad Org (e.g. 450060) are ignored everywhere."""
+    return _org(row) in config.NO_LAB_ORGS and _comp(row) in config.LAB_COMPONENTS
+
+
 def _days(row) -> int:
     v = row.get("Concat Days")
     if not v:
@@ -130,6 +135,11 @@ def validate(rows: list[dict]):
 
     for i, row in enumerate(rows):
         if handled[i]:
+            continue
+
+        if is_ignored(row):  # spurious LAB/PRA in a no-lab org (e.g. 450060)
+            _set(row, _duration_min(row), None, config.STATUS_IGNORED,
+                 f"Acad Org {_org(row)} has no lab component")
             continue
 
         org = _org(row)

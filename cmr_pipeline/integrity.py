@@ -11,7 +11,7 @@ Appends two columns:
 from __future__ import annotations
 
 from . import config
-from .step1b_duration import _f, _comp, _org, _is_linked_pair, _instr_code
+from .step1b_duration import _f, _comp, _org, _is_linked_pair, _instr_code, is_ignored
 
 C_INT_STATUS = "Integrity Status"
 C_INT_FLAGS = "Integrity Flags"
@@ -49,6 +49,7 @@ def check(rows: list[dict]):
     """Run all integrity checks; mutate rows with the two output cols. Return report."""
     n = len(rows)
     flags: list[list[tuple[str, str, str]]] = [[] for _ in range(n)]  # (severity, code, detail)
+    ignored = [is_ignored(r) for r in rows]  # spurious LAB/PRA in no-lab orgs
 
     def add(i, severity, code, detail=""):
         flags[i].append((severity, code, detail))
@@ -120,6 +121,8 @@ def check(rows: list[dict]):
     # merely share a time slot (e.g. an In-Person and an MDC-Live section).
     seen: dict[tuple, list[int]] = {}
     for i, r in enumerate(rows):
+        if ignored[i]:
+            continue
         key = (_descr(r), _comp(r), _days(r), str(r.get("Session Code")),
                str(r.get("Instr Mode")), _f(r.get("Cap Enrl")),
                _min(r.get("Mtg Start")), _min(r.get("Mtg End")))
@@ -132,6 +135,8 @@ def check(rows: list[dict]):
 
     # --- C1 / C2: time integrity (all rows) ---
     for i, r in enumerate(rows):
+        if ignored[i]:
+            continue
         ms, me = _min(r.get("Mtg Start")), _min(r.get("Mtg End"))
         dur = _min(r.get("Duration"))
         code = _instr_code(r)
@@ -145,6 +150,8 @@ def check(rows: list[dict]):
 
     # --- D1: missing required fields (active, meeting-required) ---
     for i, r in enumerate(rows):
+        if ignored[i]:
+            continue
         code = _instr_code(r)
         missing = []
         if code in MEETING_MODES:
