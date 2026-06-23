@@ -371,9 +371,11 @@ conditions already hold, so the pair was *meant* to be one combined class.
   it would require catalog data on which courses require a lab.)*
 
 - **B4 — `DUPLICATE_COMPONENT` (Warning).** Two rows with **identical** `Class Descr`,
-  `Comp`, `Concat Days`, `Session Code`, `Mtg Start`, and `Mtg End` → an apparent exact
-  duplicate. Flag both. (Strict identity to avoid false positives on legitimate multiple
-  sections of the same course.)
+  `Comp`, `Concat Days`, `Session Code`, **`Instr Mode`**, **`Cap Enrl`**, `Mtg Start`,
+  and `Mtg End` → an apparent exact duplicate. Flag both. `Instr Mode` and `Cap Enrl` are
+  in the identity key to avoid false positives on legitimately distinct sections that
+  merely share a time slot — e.g. an In-Person and an MDC-Live section of the same course
+  at the same time (real case found in CGS1060C during the first run).
 
 - **C1 — `TIME_ROLLOVER` (Warning).** Any row with both `Mtg Start` and `Mtg End` present
   where `Mtg End` ≤ `Mtg Start`. This captures AM/PM and hour rollovers (an end that
@@ -398,6 +400,13 @@ conditions already hold, so the pair was *meant* to be one combined class.
 
 The duration validation columns (S5.6) are independent — a row can be duration-
 `Validated` while carrying an `Integrity Status = Error` (ARC2580 is exactly this).
+
+**First-run integrity results (184 sections):** Error 2 · Warning 1 · OK 181.
+- `CAP_MISMATCH` ×2 — **ARC2580** "Arch Structures 1": LEC cap 40 ≠ LAB cap 30 (Error).
+- `MISSING_FIELDS` ×1 — **CTS1120** "Cybersecurity Fundamentals" LAB: blank
+  `Mtg Start`/`Mtg End`/`Concat Days` on an In-Person section (Warning).
+- (A B4 false positive on CGS1060C was caught during the run and the rule tightened —
+  see B4 above.) Implemented in `cmr_pipeline/integrity.py`.
 
 ### 5.7 Implementation approach (recommended)
 

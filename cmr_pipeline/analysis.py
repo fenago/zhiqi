@@ -14,11 +14,12 @@ import os
 
 from . import config
 from .step1b_duration import C_CURRENT, C_EXPECTED, C_STATUS, C_NOTES
+from .integrity import C_INT_STATUS, C_INT_FLAGS
 
 MODEL = "claude-opus-4-8"
 
 
-def build_summary(filter_report: dict, dur_report: dict) -> dict:
+def build_summary(filter_report: dict, dur_report: dict, int_report: dict = None) -> dict:
     """Compact, JSON-serializable summary of the deterministic results."""
     mismatches = [
         {
@@ -36,7 +37,7 @@ def build_summary(filter_report: dict, dur_report: dict) -> dict:
         }
         for m in dur_report.get("mismatches", [])
     ]
-    return {
+    summary = {
         "filter": {k: v for k, v in filter_report.items()},
         "duration": {
             "total": dur_report["total"],
@@ -46,6 +47,28 @@ def build_summary(filter_report: dict, dur_report: dict) -> dict:
         },
         "mismatches": mismatches,
     }
+    if int_report is not None:
+        summary["integrity"] = {
+            "status_counts": int_report["status_counts"],
+            "code_counts": int_report["code_counts"],
+            "flagged": [
+                {
+                    "course": _course(r),
+                    "descr": r.get("Class Descr"),
+                    "comp": r.get("Comp"),
+                    "integrity_status": r.get(C_INT_STATUS),
+                    "flags": r.get(C_INT_FLAGS),
+                }
+                for r in (int_report["errors"] + int_report["warnings"])
+            ],
+        }
+    return summary
+
+
+def _course(r):
+    pre = str(r.get("Course Prefix (Subject)") or "").strip()
+    num = str(r.get("Course Number (Catalog Nbr)") or "").strip().split(".")[0]
+    return f"{pre}{num}"
 
 
 def deterministic_narrative(summary: dict) -> str:
@@ -72,6 +95,21 @@ def deterministic_narrative(summary: dict) -> str:
                 f"{(m['instr_mode'] or '')[:2]} | {m['current_min']} | "
                 f"{m['expected_min']} | {m['note']} |"
             )
+    integ = summary.get("integrity")
+    if integ:
+        sc = integ["status_counts"]
+        lines += ["", "## Integrity checks (A1-D1)", "",
+                  f"- Error: {sc.get('Error', 0)} · Warning: {sc.get('Warning', 0)} · "
+                  f"OK: {sc.get('OK', 0)}",
+                  f"- Flags: {integ['code_counts']}"]
+        if integ["flagged"]:
+            lines += ["", "| Course | Descr | Comp | Severity | Flags |",
+                      "|---|---|---|---|---|"]
+            for r in integ["flagged"][:50]:
+                lines.append(
+                    f"| {r['course']} | {r['descr']} | {r['comp']} | "
+                    f"{r['integrity_status']} | {r['flags']} |"
+                )
     return "\n".join(lines)
 
 
