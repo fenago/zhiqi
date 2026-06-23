@@ -261,6 +261,33 @@ contact-hour conversion for Technology programs — confirm.)
 
 Use consistent terminology throughout the file.
 
+### 5.8 First-run results (against `Collegewide_CMR (2273) Spring 2027`)
+
+Implemented as Python (`cmr_pipeline/`) and run end-to-end. Step 1 → **184** sections.
+Duration validation (10% tolerance) results:
+
+| Status | Count |
+|---|---|
+| Validated | 135 |
+| Validated together with linked LEC section | 48 |
+| N/A – insufficient data (cch = 0) | 1 |
+| **Mismatch** | **0** |
+
+**Gap distribution** (rows with a computable expected duration): 99 exact, 35 within
+5 min, 1 within 5–10 min, **none beyond 20 min**.
+
+**Key findings:**
+- **The 450060 remap is critical.** With the remap OFF, **81 of 83** Technology
+  sections fail (>10%); with it ON, they pass. The rule is essential and correctly
+  implemented.
+- **For these 3 departments, duration data is essentially clean.** The only
+  deviations are tiny (≤7 min, e.g. a blended class scheduled 195 min vs expected 200).
+  → The "many errors" in the CMR are likely concentrated in *other* validation
+  dimensions (rooms, capacity, instructor) or other departments — **not** duration for
+  Arch/Eng/Tech. (Confirm where the known errors live.)
+- **Tolerance choice now has visible stakes (Q8):** mismatches by rule —
+  exact: 36 (all ≤7 min) · 5 min: 1 · 10 min: 0 · 10%: 0 · 5%: 0.
+
 ### 5.7 Implementation approach (recommended)
 
 - Build as a **deterministic rules engine** (Python), with this spec as the written
